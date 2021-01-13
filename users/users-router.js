@@ -1,9 +1,11 @@
 const express = require("express")
+const becrypt = require("bcryptjs")
 const Users = require("./users-model")
-
+const {restrict} = require("./users-middleware")
 const router = express.Router()
 
-router.get("/users", async (req, res, next) => {
+router.get("/users",restrict(), async (req, res, next) => {
+	//now that enpoint is protected
 	try {
 		res.json(await Users.find())
 	} catch(err) {
@@ -24,7 +26,8 @@ router.post("/users", async (req, res, next) => {
 
 		const newUser = await Users.add({
 			username,
-			password,
+			//gonna hash a password with a time complexity of 10
+			password: await becrypt.hash(password, 14)
 		})
 
 		res.status(201).json(newUser)
@@ -37,17 +40,35 @@ router.post("/login", async (req, res, next) => {
 	try {
 		const { username, password } = req.body
 		const user = await Users.findBy({ username }).first()
-		
-		if (!user) {
+		const passwordValide = await becrypt.compare(password, user.password)
+		//we dont have to know the original ppassword to check the user we juts rehash it and compare the hushes 
+		if (!user || !passwordValide) {
 			return res.status(401).json({
 				message: "Invalid Credentials",
 			})
 		}
 
+		//generate a new session and send it back to the client
+		req.session.user = user
+
 		res.json({
 			message: `Welcome ${user.username}!`,
 		})
 	} catch(err) {
+		next(err)
+	}
+})
+router.get("/logout", async(req, res, next) => {
+	//deletes the session so the session id is invalid 
+	try{
+req.session.destroy((err) => {
+	if(err) {
+		next(err)
+	}else{
+		res.status(204).end()
+	}
+})
+	}catch(err){
 		next(err)
 	}
 })
